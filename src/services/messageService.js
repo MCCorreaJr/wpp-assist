@@ -4,7 +4,11 @@ const {
   buildExpenseConfirmationMessage,
   handlePendingAction,
 } = require('./confirmationService');
-const { parseMessage } = require('./parserService');
+const { extractIntent } = require('./aiIntentService');
+const {
+  addInteraction,
+  getRecentHistory,
+} = require('./conversationMemoryService');
 const {
   getMonthlyTotalReport,
   getCategoryTotalReport,
@@ -29,6 +33,11 @@ function extractIncomingMessage(payload) {
   };
 }
 
+async function sendAndRemember(phone, text) {
+  await sendTextMessage(phone, text);
+  addInteraction(phone, 'assistant', text);
+}
+
 async function processIncomingMessage(payload) {
   const incomingMessage = extractIncomingMessage(payload);
 
@@ -39,18 +48,24 @@ async function processIncomingMessage(payload) {
   }
 
   const { phone, text } = incomingMessage;
+  const recentHistory = getRecentHistory(phone);
 
-  if (getPendingAction(phone)) {
-    const result = await handlePendingAction(phone, text);
+  addInteraction(phone, 'user', text);
+
+  const pendingAction = getPendingAction(phone);
+
+  if (pendingAction) {
+    const contextIntent = await extractIntent(text, recentHistory);
+    const result = await handlePendingAction(phone, text, contextIntent, pendingAction);
 
     if (result?.text) {
-      await sendTextMessage(phone, result.text);
+      await sendAndRemember(phone, result.text);
     }
 
     return result;
   }
 
-  const parsedMessage = parseMessage(text);
+  const parsedMessage = await extractIntent(text, recentHistory);
 
   if (parsedMessage.intent === 'add_expense') {
     setPendingAction(phone, {
@@ -60,7 +75,7 @@ async function processIncomingMessage(payload) {
 
     const confirmationText = buildExpenseConfirmationMessage(parsedMessage);
 
-    await sendTextMessage(phone, confirmationText);
+    await sendAndRemember(phone, confirmationText);
 
     return {
       pending: true,
@@ -68,27 +83,58 @@ async function processIncomingMessage(payload) {
     };
   }
 
-  if (parsedMessage.intent === 'monthly_total') {
+  if (parsedMessage.intent === 'get_month_total') {
     const reportText = await getMonthlyTotalReport();
 
-    await sendTextMessage(phone, reportText);
+    await sendAndRemember(phone, reportText);
 
     return {
       intent: parsedMessage.intent,
     };
   }
 
-  if (parsedMessage.intent === 'category_total') {
+  if (parsedMessage.intent === 'get_category_total') {
     const reportText = await getCategoryTotalReport(parsedMessage.category);
 
-    await sendTextMessage(phone, reportText);
+    await sendAndRemember(phone, reportText);
 
     return {
       intent: parsedMessage.intent,
     };
   }
 
-  await sendTextMessage(
+  if (parsedMessage.intent === 'confirm_action') {
+    await sendAndRemember(phone, 'Não há operação pendente para confirmar.');
+
+    return {
+      intent: parsedMessage.intent,
+    };
+  }
+
+  if (parsedMessage.intent === 'cancel_action') {
+    await sendAndRemember(phone, 'Não há operação pendente para cancelar.');
+
+    return {
+      intent: parsedMessage.intent,
+    };
+  }
+
+  if (
+    [
+      'update_expense_context',
+      'add_incremental_expense',
+      'repeat_last_expense',
+      'correct_expense',
+    ].includes(parsedMessage.intent)
+  ) {
+    await sendAndRemember(phone, 'Não há despesa pendente para atualizar.');
+
+    return {
+      intent: parsedMessage.intent,
+    };
+  }
+
+  await sendAndRemember(
     phone,
     'Não entendi sua mensagem. Envie algo como: Gastei 45 de almoço.',
   );
