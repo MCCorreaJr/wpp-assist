@@ -5,6 +5,7 @@ const env = {
   whatsappVerifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
   whatsappToken: process.env.WHATSAPP_TOKEN,
   phoneNumberId: process.env.PHONE_NUMBER_ID,
+  openaiApiKey: process.env.OPENAI_API_KEY,
   googleSheetId: process.env.GOOGLE_SHEET_ID,
   googleServiceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
   googlePrivateKey: process.env.GOOGLE_PRIVATE_KEY,
